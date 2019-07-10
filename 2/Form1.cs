@@ -1,0 +1,506 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Runtime.InteropServices;
+using ESRI.ArcGIS.esriSystem;
+using ESRI.ArcGIS.Controls;
+using ESRI.ArcGIS.SystemUI;
+using ESRI.ArcGIS.Geometry;
+using ESRI.ArcGIS.Display;
+using ESRI.ArcGIS.Geodatabase;
+using ESRI.ArcGIS.DataSourcesGDB;
+using ESRI.ArcGIS.DataSourcesRaster;
+using ESRI.ArcGIS.Carto;
+using ESRI.ArcGIS;
+
+namespace GIS实验3_lxy07162801
+{
+    public partial class Form1 : Form
+    {
+
+        //量算全局变量
+        int flag = 0;//距离量算flag=1,面积量算flag=2
+        private IElement pElement;
+
+        //数据库全局变量
+        public string Server;
+        public string Service;
+        public string Database;
+        public string User;
+        public string Password;
+
+        //空间查询全局变量
+        string mTool;
+        public int mQueryModel;
+        public int mLayerIndex;
+
+
+
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private void axToolbarControl1_OnMouseDown(object sender, ESRI.ArcGIS.Controls.IToolbarControlEvents_OnMouseDownEvent e)
+        {
+            //量算
+            switch (flag)
+            {
+                case 0:
+                    break;
+                case 1:
+                    IPolyline polyline = DistanceMeasure();
+                    MessageBox.Show("距离为" + Convert.ToInt64(polyline.Length).ToString());
+                    break;
+                case 2:
+                    IPolygon polygon = AreaMeasure();
+                    IArea pArea = polygon as IArea;
+                    MessageBox.Show("面积为" + Convert.ToInt64(Math.Abs(pArea.Area)).ToString());
+                    break;
+                default:
+                    break;
+            }
+
+        }
+
+        private void 打开文档OToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            axMapControl1.LoadMxFile(OpenMxd());
+        }
+        public string OpenMxd()
+        {
+            string MxdPath = ""; OpenFileDialog OpenMXD = new OpenFileDialog();
+            OpenMXD.Title = "打开地图";
+            OpenMXD.InitialDirectory = "E:";
+            OpenMXD.Filter = "Map Documents (*.mxd)|*.mxd";
+            if (OpenMXD.ShowDialog() == DialogResult.OK) { MxdPath = OpenMXD.FileName; }
+            return MxdPath;
+        }
+
+        private void menuStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
+        {
+
+        }
+
+        private void 添加数据AToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            string[] shpFile = new string[2];
+            shpFile = OpenShapeFile();
+            axMapControl1.AddShapeFile(shpFile[0], shpFile[1]);
+        }
+        public string[] OpenShapeFile()
+        {
+            string[] ShpFile = new string[2];
+            OpenFileDialog OpenShpFile = new OpenFileDialog();
+            OpenShpFile.Title = "打开Shape文件";
+            OpenShpFile.InitialDirectory = "C:\\Users\\meetl\\Desktop\\ArcGIS file\\GIS 原理实验数据\\";
+            OpenShpFile.Filter = "Shape 文件(*.shp)|*.shp";
+            if (OpenShpFile.ShowDialog() == DialogResult.OK)
+            {
+                string ShapPath = OpenShpFile.FileName; //利用"\\"将文件路径分成两部分 
+                int Position = ShapPath.LastIndexOf("\\");
+                string FilePath = ShapPath.Substring(0, Position);
+                string ShpName = ShapPath.Substring(Position + 1);
+                ShpFile[0] = FilePath;
+                ShpFile[1] = ShpName;
+            }
+            return ShpFile;
+        }
+
+        private void 添加图层ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Title = "打开lyr文档";
+            openFileDialog.Filter = "map documents(*.lyr)|*.lyr";
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                string filePath = openFileDialog.FileName;
+                try
+                {
+                    axMapControl1.AddLayerFromFile(filePath);
+
+                }
+                catch (Exception x)
+                {
+                    MessageBox.Show("不是有效的lyr文件" + x.ToString());
+                }
+
+            }
+        }
+
+        private void 清空图层ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                for (int i = axMapControl1.LayerCount - 1; i >= 0; i--)
+                {
+                    axMapControl1.DeleteLayer(i);
+                }
+
+            }
+            catch (Exception x)
+            {
+                MessageBox.Show("删除失败" + x.ToString());
+            }
+        }
+
+        private void 保存文件ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string sMxdFileName = axMapControl1.DocumentFilename;
+                IMapDocument pMapdocument = new MapDocumentClass();
+                if (sMxdFileName != null && axMapControl1.CheckMxFile(sMxdFileName))
+                {
+                    //只读
+                    if (pMapdocument.get_IsReadOnly(sMxdFileName))
+                    {
+                        MessageBox.Show("本地图文档是只读的，不能保存！");
+                        pMapdocument.Close();
+                        return;
+                    }
+                }
+                else
+                {
+                    SaveFileDialog pSavaFileDialog = new SaveFileDialog();
+                    pSavaFileDialog.Title = "请选择保存路径";
+                    pSavaFileDialog.OverwritePrompt = true;
+                    pSavaFileDialog.Filter = "ArcMap文档(*.mxd)|*.mxd|ArcMap模板(*.mxt)|*.mxt";
+                    pSavaFileDialog.RestoreDirectory = true;
+                    if (pSavaFileDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        sMxdFileName = pSavaFileDialog.FileName;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+            }
+            catch (Exception x)
+            {
+                MessageBox.Show(x.Message);
+            }
+
+        }
+
+        private void 距离量算ToolStripMenuItem1_Click(object sender, EventArgs e)
+        {
+            flag = 1;
+        }
+
+        private void 面积量算ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            flag = 2;
+        }
+
+        //距离量算函数
+        private IPolyline DistanceMeasure()
+        {
+            ILineElement pLineElement = new LineElementClass();
+            IActiveView pActiveView = axMapControl1.ActiveView;
+
+            IRgbColor pRgbColor = new RgbColorClass();
+            IRubberBand pRubberBand = new RubberLineClass();
+            ISimpleLineSymbol pSimpleLineSymbol = new SimpleLineSymbolClass();
+            IPolyline pPolyline;
+
+            pSimpleLineSymbol.Style = esriSimpleLineStyle.esriSLSSolid;
+            pRgbColor.Red = 125;
+            pSimpleLineSymbol.Color = pRgbColor;
+            pLineElement.Symbol = pSimpleLineSymbol;
+            pPolyline = pRubberBand.TrackNew(pActiveView.ScreenDisplay, pSimpleLineSymbol as ISymbol) as IPolyline;
+            pElement = new LineElement();
+            pElement = pLineElement as IElement;
+            pElement.Geometry = pPolyline;
+            double a = pPolyline.Length;
+            IGraphicsContainer pGraphicsContainer = axMapControl1.ActiveView.FocusMap as IGraphicsContainer;
+            pGraphicsContainer.AddElement(pElement, 0);
+            axMapControl1.ActiveView.Refresh();
+
+            return pPolyline;
+        }
+        //面积量算函数
+        private IPolygon AreaMeasure()
+        {
+            IRgbColor pRgbColor = new RgbColorClass();
+            IActiveView pActiveView = axMapControl1.ActiveView; ;
+            IRubberBand pRubberBand = new RubberPolygonClass();
+            IElement pElement = new PolygonElement();
+            IGraphicsContainer pGraphicsContainer;
+            IPolygonElement pPolygonElement = new PolygonElementClass();
+            ISimpleFillSymbol pSimpleFillSymbol = new SimpleFillSymbolClass();
+            IPolygon pPolygon;
+
+            pSimpleFillSymbol.Style = esriSimpleFillStyle.esriSFSBackwardDiagonal;
+            pRgbColor.Red = 250;
+            pSimpleFillSymbol.Color = pRgbColor;
+            pPolygon = pRubberBand.TrackNew(pActiveView.ScreenDisplay, pSimpleFillSymbol as ISymbol) as IPolygon;
+            pElement = pPolygonElement as IElement;
+            pElement.Geometry = pPolygon;
+
+            pGraphicsContainer = axMapControl1.ActiveView.FocusMap as IGraphicsContainer;
+            pGraphicsContainer.AddElement(pElement, 0);
+            axMapControl1.ActiveView.Refresh();
+
+            return pPolygon;
+        }
+
+        private void 量算清除ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            flag = 0;
+            axMapControl1.ActiveView.GraphicsContainer.DeleteAllElements();
+            axMapControl1.Refresh();
+
+        }
+
+        private void 缓冲区分析ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            IWorkspace pWorkspace = arcSDEWorkspaceOpen("", "sde:sqlserver:DESKTOP-P3P60I9", "sa", "", "GIS", "SDE.DEFAULT");
+            if (pWorkspace != null)
+            {
+                AddAllDataset(pWorkspace, axMapControl1);
+            }
+        }
+        private IWorkspace arcSDEWorkspaceOpen(string server, string instance, string user, string password, string database, string version)
+        {
+            IWorkspace pWorkSpace = null;
+
+            IPropertySet pPropertySet = new PropertySetClass();
+            pPropertySet.SetProperty("SERVER", server);
+            pPropertySet.SetProperty("INSTANCE", instance);
+            pPropertySet.SetProperty("USER", user);
+            pPropertySet.SetProperty("PASSWORD", password);
+            pPropertySet.SetProperty("DATABASE", database);
+            pPropertySet.SetProperty("VERSION", version);
+
+            IWorkspaceFactory2 pWorkspaceFactory = new SdeWorkspaceFactoryClass();
+
+            try
+            {
+                pWorkSpace = pWorkspaceFactory.Open(pPropertySet, 0);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+
+            return pWorkSpace;
+        }
+        private void AddAllDataset(IWorkspace pWorkspace, AxMapControl mapControl)
+        {
+            IEnumDataset pEnumDataset = pWorkspace.get_Datasets(esriDatasetType.esriDTAny);
+            pEnumDataset.Reset();
+
+            IDataset pDataset = pEnumDataset.Next();
+
+            while (pDataset != null)
+            {
+                if (pDataset is IFeatureDataset)
+                {
+                    IFeatureWorkspace pFeatureWorkspace = (IFeatureWorkspace)pWorkspace;
+                    IFeatureDataset pFeatureDataset = pFeatureWorkspace.OpenFeatureDataset(pDataset.Name);
+                    IEnumDataset pEnumDataset1 = pFeatureDataset.Subsets;
+                    pEnumDataset1.Reset();
+
+                    IGroupLayer pGroupLayer = new GroupLayerClass();
+                    pGroupLayer.Name = pFeatureDataset.Name;
+                    IDataset pDataset1 = pEnumDataset1.Next();
+
+                    while (pDataset1 != null)
+                    {
+                        if (pDataset1 is IFeatureClass)
+                        {
+                            IFeatureLayer pFeatureLayer = new FeatureLayerClass();
+                            pFeatureLayer.FeatureClass = pFeatureWorkspace.OpenFeatureClass(pDataset1.Name);
+                            if (pFeatureLayer.FeatureClass != null)
+                            {
+                                pFeatureLayer.Name = pFeatureLayer.FeatureClass.AliasName;
+                                pGroupLayer.Add(pFeatureLayer);
+                                mapControl.Map.AddLayer(pFeatureLayer);
+                            }
+                        }
+                        pDataset1 = pEnumDataset1.Next();
+                    }
+                }
+
+                else if (pDataset is IFeatureClass)
+                {
+                    IFeatureWorkspace pFeatureWorkspace = (IFeatureWorkspace)pWorkspace;
+                    IFeatureLayer pFeatureLayer = new FeatureLayerClass();
+                    pFeatureLayer.FeatureClass = pFeatureWorkspace.OpenFeatureClass(pDataset.Name);
+
+                    pFeatureLayer.Name = pFeatureLayer.FeatureClass.AliasName;
+                    mapControl.Map.AddLayer(pFeatureLayer);
+                }
+                else if (pDataset is IRasterDataset)
+                {
+                    IRasterWorkspaceEx pRasterWorkspace = (IRasterWorkspaceEx)pWorkspace;
+                    IRasterDataset pRasterDataset = pRasterWorkspace.OpenRasterDataset(pDataset.Name);
+
+                    IRasterPyramid3 pRasPyrmid;
+                    pRasPyrmid = pRasterDataset as IRasterPyramid3;
+
+                    if (pRasPyrmid != null)
+                    {
+                        if (!(pRasPyrmid.Present)) pRasPyrmid.Create();
+                    }
+
+                    IRasterLayer pRasterLayer = new RasterLayerClass();
+                    pRasterLayer.CreateFromDataset(pRasterDataset);
+                    ILayer pLayer = pRasterLayer as ILayer;
+                    mapControl.AddLayer(pLayer, 0);
+                }
+                pDataset = pEnumDataset.Next();
+            }
+
+            mapControl.ActiveView.Refresh();
+
+        }
+
+        private void AxMapControl1_OnMouseDown(object sender, IMapControlEvents2_OnMouseDownEvent e)
+        {
+            //量算
+            switch (flag)
+            {
+                case 0:
+                    break;
+                case 1:
+                    IPolyline polyline = DistanceMeasure();
+                    MessageBox.Show("距离为" + Convert.ToInt64(polyline.Length).ToString());
+                    break;
+                case 2:
+                    IPolygon polygon = AreaMeasure();
+                    IArea pArea = polygon as IArea;
+                    MessageBox.Show("面积为" + Convert.ToInt64(Math.Abs(pArea.Area)).ToString());
+                    break;
+                default:
+                    break;
+            }
+            //查询
+            this.axMapControl1.Map.ClearSelection();//清空上次选择结构
+            switch (mTool)
+            {
+                case "SpatialQuery":
+                    IActiveView qActiveView = this.axMapControl1.ActiveView;
+                    IPoint pPoint = qActiveView.ScreenDisplay.DisplayTransformation.ToMapPoint(e.x, e.y);
+                    IGeometry pGeometry = null;
+                    switch (this.mQueryModel)
+                    {
+                        case 0:
+                            pGeometry = this.axMapControl1.TrackRectangle();
+                            break;
+                        case 1:
+                            pGeometry = this.axMapControl1.TrackCircle();
+                            break;
+                        case 2:
+                            pGeometry = AreaMeasure();
+                            axMapControl1.ActiveView.GraphicsContainer.DeleteAllElements();
+                            axMapControl1.Refresh();
+                            break;
+                    }
+                    IFeatureLayer pFeatureLayer = this.axMapControl1.Map.get_Layer(this.mLayerIndex) as IFeatureLayer;
+                    DataTable pDataTable = this.LoadQueryResult(axMapControl1, pFeatureLayer, pGeometry);
+                    panel1.Visible = true;
+                    this.dataGridView1.DataSource = pDataTable.DefaultView;
+                    this.dataGridView1.Refresh();
+                    break;
+                default:
+                    break;
+            }
+        }
+        //查询
+        private DataTable LoadQueryResult(ESRI.ArcGIS.Controls.AxMapControl mapControl, IFeatureLayer featureLayer, IGeometry geometry)
+        {
+            IFeatureClass pFeatureClass = featureLayer.FeatureClass;
+            IFields pFields = pFeatureClass.Fields;
+
+            DataTable pDataTable = new DataTable();
+
+            for (int i = 0; i < pFields.FieldCount; ++i)
+            {
+                pDataTable.Columns.Add(pFields.get_Field(i).AliasName);
+            }
+
+            ISpatialFilter pSpatialFilter = new SpatialFilterClass();
+            pSpatialFilter.Geometry = geometry;
+
+            switch (pFeatureClass.ShapeType)
+            {
+                case esriGeometryType.esriGeometryPoint:
+                    pSpatialFilter.SpatialRel = esriSpatialRelEnum.esriSpatialRelContains;
+                    break;
+                case esriGeometryType.esriGeometryPolyline:
+                    pSpatialFilter.SpatialRel = esriSpatialRelEnum.esriSpatialRelIntersects;
+                    break;
+                case esriGeometryType.esriGeometryPolygon:
+                    pSpatialFilter.SpatialRel = esriSpatialRelEnum.esriSpatialRelIntersects;
+                    break;
+            }
+
+            pSpatialFilter.GeometryField = pFeatureClass.ShapeFieldName;
+            IQueryFilter pQueryFilter = pSpatialFilter as IQueryFilter;
+            IFeatureCursor pFeatureCursor = featureLayer.Search(pQueryFilter, true);
+            IFeature pFeature = pFeatureCursor.NextFeature();
+
+            while (pFeature != null)
+            {
+                string strFldValue = null;
+                DataRow dr = pDataTable.NewRow();
+
+                for (int i = 0; i < pFields.FieldCount; i++)
+                {
+                    string strFldName = pFields.get_Field(i).Name;
+                    if (strFldName == "Shape")
+                    {
+                        strFldValue = Convert.ToString(pFeature.Shape.GeometryType);
+                    }
+                    else
+                        strFldValue = Convert.ToString(pFeature.get_Value(i));
+
+                    dr[i] = strFldName;
+                }
+
+                pDataTable.Rows.Add(dr);
+
+                mapControl.Map.SelectFeature((ILayer)featureLayer, pFeature);
+                mapControl.ActiveView.Refresh();
+                pFeature = pFeatureCursor.NextFeature();
+            }
+
+            return pDataTable;
+        }
+
+        private void 空间查询ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Spatialqueryform spatialqueryform = new Spatialqueryform(axMapControl1);
+            if (spatialqueryform.ShowDialog() == DialogResult.OK)
+            {
+                this.mTool = "SpatialQuery";
+                this.mQueryModel = spatialqueryform.mQueryModel;
+                this.mLayerIndex = spatialqueryform.mLayerIndex;
+                this.axMapControl1.MousePointer = ESRI.ArcGIS.Controls.esriControlsMousePointer.esriPointerCrosshair;
+            }
+
+        }
+
+        private void 清除选择ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            this.panel1.Visible = false;
+            mTool = null;
+
+        }
+    }
+}
+
+
+
+
+
